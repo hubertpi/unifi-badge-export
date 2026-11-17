@@ -1,5 +1,5 @@
 name: UniFi Badge Export
-version: "1.1.0"
+version: "1.1.1"
 slug: unifi_badge_export
 description: Export UniFi Access users and active employee status to a shared CardExchange CSV.
 arch: [amd64, aarch64]

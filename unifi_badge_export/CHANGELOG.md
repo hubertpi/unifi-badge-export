@@ -1,3 +1,7 @@
+# 1.1.1
+
+- Added a custom navy, white and cyan employee badge sync icon for the Home Assistant add-on store.
+
 # 1.1.0
 
 - Added ActiveEmployee as true/false, mapped from UniFi ACTIVE/DEACTIVATED status.
