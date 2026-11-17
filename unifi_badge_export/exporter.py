@@ -20,7 +20,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 LOG = logging.getLogger("badge-export")
-HEADERS = ["UserID", "FirstName", "LastName", "FullName", "ID", "PhotoPath"]
+HEADERS = ["UserID", "FirstName", "LastName", "FullName", "ID", "PhotoPath", "ActiveEmployee"]
 
 
 class ExportError(Exception):
@@ -175,9 +175,11 @@ def export(options, client, share_root=Path("/share")):
     if folder.is_symlink() or (folder / "photos").is_symlink():
         raise ExportError("Output folders cannot be symbolic links.")
     users = client.users()
-    active = [u for u in users if u.get("status") == "ACTIVE"]
-    if not active and not options.get("allow_empty_export", False):
-        raise ExportError("No active users returned; previous CSV retained. Enable allow_empty_export only if intentional.")
+    if any(u.get("status") not in ("ACTIVE", "DEACTIVATED") for u in users):
+        raise ExportError("Unrecognized user status; previous CSV retained rather than guessing ActiveEmployee.")
+    active_count = sum(u["status"] == "ACTIVE" for u in users)
+    if not users and not options.get("allow_empty_export", False):
+        raise ExportError("No users returned; previous CSV retained. Enable allow_empty_export only if intentional.")
     photos = options.get("export_photos", False)
     windows_folder = options.get("windows_photo_folder", "").strip()
     if photos and not (ntpath.isabs(windows_folder) and (windows_folder.startswith("\\\\") or ntpath.splitdrive(windows_folder)[0])):
@@ -189,7 +191,7 @@ def export(options, client, share_root=Path("/share")):
     except (OSError, KeyError, csv.Error, UnicodeError):
         pass
     rows, warnings = [], []
-    for user in active:
+    for user in users:
         first, last, number = (text(user, key) for key in ("first_name", "last_name", "employee_number"))
         photo = ""
         if photos:
@@ -202,11 +204,12 @@ def export(options, client, share_root=Path("/share")):
                         and re.fullmatch(r"[0-9a-f]{20}-[0-9a-f]{16}\.(jpg|png)", ntpath.basename(old))
                         and (folder / "photos" / ntpath.basename(old)).is_file()):
                     photo = old
-        rows.append([user["id"], first, last, " ".join(p for p in (first, last) if p), number, photo])
+        rows.append([user["id"], first, last, " ".join(p for p in (first, last) if p), number, photo,
+                     "true" if user["status"] == "ACTIVE" else "false"])
     rows.sort(key=lambda row: (row[2].casefold(), row[1].casefold(), row[0]))
     missing = sum(not row[4] for row in rows)
     if missing:
-        warnings.append(f"{missing} active users have no employee number; ID is blank for them.")
+        warnings.append(f"{missing} users have no employee number; ID is blank for them.")
     numbers = [row[4] for row in rows if row[4]]
     duplicates = len(numbers) - len(set(numbers))
     if duplicates:
@@ -217,11 +220,13 @@ def export(options, client, share_root=Path("/share")):
     writer.writerows(rows)
     schema = ("[employees.csv]\r\nColNameHeader=True\r\nFormat=CSVDelimited\r\n"
               "CharacterSet=65001\r\nMaxScanRows=0\r\n" +
-              "".join(f"Col{i}={name} Text Width 2048\r\n" for i, name in enumerate(HEADERS, 1)))
+              "".join(f"Col{i}={name} " + ("Bit" if name == "ActiveEmployee" else "Text Width 2048") + "\r\n"
+                      for i, name in enumerate(HEADERS, 1)))
     # Microsoft Text providers honor this sidecar; other CSV readers can ignore it.
     atomic_write(folder / "schema.ini", schema.encode("ascii"))
     atomic_write(folder / "employees.csv", output.getvalue().encode("utf-8-sig"))
-    return {"active_users": len(rows), "total_users": len(users), "warnings": warnings,
+    return {"active_users": active_count, "inactive_users": len(users) - active_count,
+            "exported_users": len(rows), "total_users": len(users), "warnings": warnings,
             "csv_path": str(folder / "employees.csv")}
 
 
@@ -257,7 +262,8 @@ class Service:
                     atomic_write("/data/last-success.json", json.dumps(result).encode())
                 except OSError:
                     LOG.warning("CSV saved, but could not persist status.")
-                LOG.info("Exported %s active users; %s warnings.", result["active_users"], len(result["warnings"]))
+                LOG.info("Exported %s users (%s active, %s inactive); %s warnings.",
+                         result["exported_users"], result["active_users"], result["inactive_users"], len(result["warnings"]))
             except Exception as ex:
                 error = str(ex) if isinstance(ex, ExportError) else "Sync failed; previous CSV retained. Check writable shared folder and configuration."
                 with self.lock:
@@ -314,7 +320,7 @@ def handler_for(service):
             details = html.escape(json.dumps(state, indent=2))
             body = f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>UniFi Badge Export</title>
 <style>body{{font:16px system-ui;max-width:820px;margin:40px auto;padding:20px;background:#f5f7fa;color:#182538}}button,a{{display:inline-block;padding:12px;margin-right:12px}}pre{{white-space:pre-wrap;background:white;padding:24px;border-radius:12px}}</style></head>
-<body><h1>UniFi Badge Export</h1><p>Active UniFi Access users for CardExchange.</p>
+<body><h1>UniFi Badge Export</h1><p>UniFi Access users for CardExchange, including active employee status.</p>
 <form method="post" action="sync"><button>Sync now</button><a href="./">Refresh status</a><a href="download">Download CSV</a></form>
 <pre>{details}</pre><p>Configuration changes take effect after restarting the add-on. All sync times are UTC.</p></body></html>'''
             self.reply(body.encode())

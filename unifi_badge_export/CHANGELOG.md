@@ -1,3 +1,12 @@
+# 1.1.0
+
+- Added ActiveEmployee as true/false, mapped from UniFi ACTIVE/DEACTIVATED status.
+- Retain deactivated users in the CSV instead of dropping their rows. Filter ActiveEmployee in CardExchange when only current employees should be displayed.
+- Declared the new field as Bit in schema.ini; existing columns and UserID keys are unchanged.
+- Added inactive_users and exported_users to status. An all-inactive directory now exports normally; only a completely empty user directory requires allow_empty_export.
+- Unknown statuses abort the sync and preserve the previous CSV.
+- Corrected CardExchange setup: select the containing folder as Database and employees.csv as the view.
+
 # 1.0.0
 
 - Active-user export with stable UniFi key, names, employee number and optional photo paths.

@@ -15,7 +15,7 @@ Set these in the add-on Configuration tab, then save and start the add-on:
 | `verify_ssl` | Defaults to true. If the console uses an untrusted self-signed certificate, false allows it; transport remains HTTPS but certificate identity is not checked. |
 | `sync_interval_seconds` | Defaults to 300. Sync also runs on startup and when Sync now is clicked. |
 | `output_folder` | Defaults to `unifi-badges`, within HA's `/share` directory. Simple folder name only. |
-| `allow_empty_export` | Defaults to false. A zero-active-user response preserves the previous CSV. Set true only if clearing the export to headers is intended. |
+| `allow_empty_export` | Defaults to false. A zero-user response preserves the previous CSV. An all-deactivated directory exports normally. Set true only if clearing the export to headers is intended. |
 | `export_photos` | Optional, defaults to false. Requires **view:system_log** as well as **view:user**. |
 | `windows_photo_folder` | When photos are enabled, the path Windows uses for `/share/unifi-badges/photos`, e.g. `\\HA-SERVER\share\unifi-badges\photos`. Leave blank when photos are off. |
 
@@ -29,9 +29,9 @@ For initial testing you can also download the CSV through the Web UI. A download
 
 ## CardExchange connection
 
-In CardExchange, configure a **CSV database connection** to the shared `employees.csv`. This is a direct CSV data source; repeatedly importing rows into the sample internal database is unnecessary.
+In CardExchange, configure a **Comma-separated values** connection. Set **Database** to the containing shared folder, for example `\\HA-SERVER\share\unifi-badges` (leave off `employees.csv`). On the next page select `employees.csv` (possibly displayed as `employees#csv`) as **View name** and `UserID` as **Primary key**. This is a direct CSV data source; repeatedly importing rows into the sample internal database is unnecessary.
 
-Use comma delimiter, double quote text qualifier, header row, and UTF-8 encoding. The file uses a UTF-8 BOM, CRLF Windows line endings and quoted fields. `schema.ini` explicitly declares text columns for Microsoft Text providers; some native readers ignore it. Confirm ID is treated as text in your reader if employee numbers contain leading zeros.
+Use comma delimiter, double quote text qualifier, header row, and UTF-8 encoding. The file uses a UTF-8 BOM, CRLF Windows line endings and quoted fields. `schema.ini` explicitly declares the six original columns as text and ActiveEmployee as Bit for Microsoft Text providers; some native readers ignore it. Confirm ID is treated as text in your reader if employee numbers contain leading zeros.
 
 | CSV column | Meaning / mapping |
 | --- | --- |
@@ -41,12 +41,13 @@ Use comma delimiter, double quote text qualifier, header row, and UTF-8 encoding
 | `FullName` | First and last name joined with one space. Map the badge's single centered name box here. |
 | `ID` | Existing UniFi **employee_number**, copied as text. Map the printed employee number here. It is not a generated row number. |
 | `PhotoPath` | Windows path of a successfully downloaded photo, or blank. |
+| `ActiveEmployee` | `true` for UniFi ACTIVE users; `false` for DEACTIVATED users. Declared as Bit in schema.ini. |
 
 Changing the database connection requires mapping your current saved badge design to these CSV columns. The package does not modify your portrait layout or name box. Use CardExchange's Refresh data after a sync; automatic refresh behavior is controlled by CardExchange.
 
 ## Reliability and diagnostics
 
-Only exact `ACTIVE` users are exported. Deactivated users disappear on the next successful sync. Active people with no employee number remain in the export with a blank ID and a warning. Duplicate employee numbers are also reported; UserID remains the key. No NFC card numbers, PINs, emails or access policies are exported.
+All users with `ACTIVE` or `DEACTIVATED` status are exported. Deactivation keeps the row and sets `ActiveEmployee=false`; reactivation sets it back to true under the same UserID. A deleted user disappears after the next successful sync. Unknown statuses abort the export to avoid guessing. People with no employee number remain in the export with a blank ID and a warning. Duplicate employee numbers are also reported; UserID remains the key. No NFC card numbers, PINs, emails or access policies are exported.
 
 The exporter fetches every page before replacing the CSV. Bad credentials, permission errors, incomplete pagination, repeated records, invalid field types and failed writes preserve the last successful CSV. A change in total user count during pagination also aborts and retries on the next interval. It cannot detect every possible same-count change during a multi-page read.
 
@@ -59,3 +60,7 @@ The web panel is available through authenticated HA ingress only. No host web po
 ## Sources
 
 Implementation follows the supplied `api_reference.pdf`: sections 2.6–2.8, 3.1, 3.5 and 9.5. Home Assistant app manifest reference: https://contributors.home-assistant.io/apps/reference/configuration/. CardExchange database support: https://help.cardexchangesolutions.com/producer/en/using_databases.html.
+
+## Updating from 1.0.0
+
+Version 1.1.0 appends ActiveEmployee and includes deactivated users. Your existing name/ID mappings and CSV path stay the same. Update the add-on, then run Sync now. CardExchange may cache the old schema: close and reopen it, or reopen the database wizard and reselect the employees.csv view if the new field is missing. To restrict the badge list to current employees, configure a CardExchange filter for ActiveEmployee=true; the CSV itself intentionally retains deactivated people.

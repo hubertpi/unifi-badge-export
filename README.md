@@ -1,6 +1,6 @@
 # UniFi Badge Export
 
-Home Assistant add-on that exports active UniFi Access people to a shared CSV for CardExchange Producer Premium. Includes scheduled/manual sync, status, optional photos and preservation of the last successful CSV.
+Home Assistant add-on that exports UniFi Access people with an ActiveEmployee true/false field to a shared CSV for CardExchange Producer Premium. Includes scheduled/manual sync, status, optional photos and preservation of the last successful CSV.
 
 ## Install from this repository
 

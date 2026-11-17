@@ -36,17 +36,45 @@ class ExportTests(unittest.TestCase):
     def run_export(self):
         return m.export(self.options, self.client, self.root)
 
-    def test_windows_csv_unicode_quoted_name_zeroes_and_active_filter(self):
+    def test_windows_csv_unicode_quoted_name_zeroes_and_active_status(self):
         result = self.run_export()
         data = self.csv_bytes()
         self.assertTrue(data.startswith(b"\xef\xbb\xbf"))
-        self.assertEqual(data.count(b"\r\n"), 2)
+        self.assertEqual(data.count(b"\r\n"), 3)
         rows = list(csv.DictReader(io.StringIO(data.decode("utf-8-sig"))))
         self.assertEqual(rows[0]["ID"], "00123")
         self.assertEqual(rows[0]["FullName"], 'José, "Joe" Pietkiewicz')
         self.assertEqual(result["active_users"], 1)
+        self.assertEqual(result["inactive_users"], 1)
+        self.assertEqual(result["exported_users"], 2)
         self.assertEqual(rows[0]["UserID"], "a")
+        self.assertEqual([r["ActiveEmployee"] for r in rows], ["true", "false"])
         self.assertIn("Col5=ID Text", (self.root / "unifi-badges/schema.ini").read_text())
+        self.assertIn("Col7=ActiveEmployee Bit", (self.root / "unifi-badges/schema.ini").read_text())
+
+    def test_deactivation_updates_same_record_instead_of_removing_it(self):
+        self.client.users.return_value = [user()]
+        self.run_export()
+        self.client.users.return_value = [user(status="DEACTIVATED")]
+        result = self.run_export()
+        rows = list(csv.DictReader(io.StringIO(self.csv_bytes().decode("utf-8-sig"))))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["UserID"], "a")
+        self.assertEqual(rows[0]["ActiveEmployee"], "false")
+        self.assertEqual(result["active_users"], 0)
+        self.assertEqual(result["inactive_users"], 1)
+        self.client.users.return_value = [user()]
+        self.run_export()
+        self.assertEqual(list(csv.DictReader(io.StringIO(self.csv_bytes().decode("utf-8-sig"))))[0]["ActiveEmployee"], "true")
+
+    def test_unknown_status_retains_previous_csv(self):
+        self.run_export()
+        before = self.csv_bytes()
+        for state in ("", None, "SOMETHING_NEW"):
+            self.client.users.return_value = [user(status=state)]
+            with self.assertRaises(m.ExportError):
+                self.run_export()
+            self.assertEqual(self.csv_bytes(), before)
 
     def test_empty_or_failed_sync_preserves_existing_export(self):
         self.run_export()
