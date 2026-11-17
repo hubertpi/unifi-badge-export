@@ -1,0 +1,32 @@
+name: UniFi Badge Export
+version: "1.0.0"
+slug: unifi_badge_export
+description: Export active UniFi Access users to a shared CardExchange CSV.
+arch: [amd64, aarch64]
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:badge-account
+map:
+  - type: share
+    read_only: false
+options:
+  console_url: ""
+  api_token: ""
+  verify_ssl: true
+  sync_interval_seconds: 300
+  output_folder: unifi-badges
+  allow_empty_export: false
+  export_photos: false
+  windows_photo_folder: ""
+schema:
+  console_url: str
+  api_token: password
+  verify_ssl: bool
+  sync_interval_seconds: int(60,86400)
+  output_folder: str
+  allow_empty_export: bool
+  export_photos: bool
+  windows_photo_folder: str
